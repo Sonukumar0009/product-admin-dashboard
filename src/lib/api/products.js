@@ -40,3 +40,7 @@ export async function getCategories() {
   const response = await api.get("/products/categories");
   return response.data; // array of { slug, name, url }
 }
+export async function addProduct(product) {
+  const response = await api.post("/products/add", product);
+  return response.data;
+}

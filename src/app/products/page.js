@@ -167,9 +167,17 @@ export default function ProductsPage() {
     <ProtectedRoute>
       <div className="p-4 md:p-8">
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-xl font-semibold">Welcome, {user?.firstName}</h1>
-          <LogoutButton />
-        </div>
+  <h1 className="text-xl font-semibold">Welcome, {user?.firstName}</h1>
+  <div className="flex items-center gap-4">
+    <button
+      onClick={() => router.push("/products/new")}
+      className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm"
+    >
+      + Add Product
+    </button>
+    <LogoutButton />
+  </div>
+      </div>
 
         {/* SEARCH + FILTER + SORT CONTROLS */}
         <div className="flex flex-col sm:flex-row gap-3 mb-4">
