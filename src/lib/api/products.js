@@ -30,7 +30,11 @@ export async function getProductsByCategory({ category, limit = 10, skip = 0, so
   const response = await api.get(`/products/category/${category}`, { params });
   return response.data;
 }
-
+// Fetches one product by id, for the details page.
+export async function getProductById(id) {
+  const response = await api.get(`/products/${id}`);
+  return response.data;
+}
 // List of all available categories, for the filter dropdown.
 export async function getCategories() {
   const response = await api.get("/products/categories");

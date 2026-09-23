@@ -11,7 +11,6 @@ import {
   getProductsByCategory,
   getCategories,
 } from "@/lib/api/products";
-
 const VALID_PAGE_SIZES = [10, 20, 50];
 const SORT_OPTIONS = [
   { value: "", label: "Default" },
@@ -249,7 +248,8 @@ export default function ProductsPage() {
                 </thead>
                 <tbody>
                   {products.map((product) => (
-                    <tr key={product.id} className="border-t border-gray-100 hover:bg-gray-50">
+                   <tr key={product.id} onClick={() => router.push(`/products/${product.id}`)}
+                      className="border-t border-gray-100 hover:bg-gray-50 cursor-pointer">
                       <td className="px-4 py-3">
                         <img src={product.thumbnail} alt={product.title} className="w-12 h-12 object-cover rounded" />
                       </td>
@@ -266,7 +266,8 @@ export default function ProductsPage() {
 
             <div className="md:hidden space-y-3">
               {products.map((product) => (
-                <div key={product.id} className="bg-white border border-gray-200 rounded-lg p-4 flex gap-3">
+                <div key={product.id} onClick={() => router.push(`/products/${product.id}`)}
+                       className="bg-white border border-gray-200 rounded-lg p-4 flex gap-3 cursor-pointer hover:bg-gray-50">
                   <img src={product.thumbnail} alt={product.title} className="w-16 h-16 object-cover rounded flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">{product.title}</p>
