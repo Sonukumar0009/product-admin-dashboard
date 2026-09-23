@@ -1,24 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import LogoutButton from "@/components/LogoutButton";
 import { useAuth } from "@/context/AuthContext";
-import { getProducts } from "@/lib/api/products";
+import { getProducts, searchProducts } from "@/lib/api/products";
 
 const VALID_PAGE_SIZES = [10, 20, 50];
 
-// Reads ?page= from the URL safely.
-// Falls back to 1 for anything invalid: missing, non-numeric, zero, negative.
-// This satisfies "Wrong URL values like ?page=abc must not break the page."
 function parsePage(value) {
   const parsed = parseInt(value, 10);
   if (!value || isNaN(parsed) || parsed < 1) return 1;
   return parsed;
 }
 
-// Same idea for page size — only allow the three values the assignment specifies.
 function parsePageSize(value) {
   const parsed = parseInt(value, 10);
   if (VALID_PAGE_SIZES.includes(parsed)) return parsed;
@@ -32,33 +28,64 @@ export default function ProductsPage() {
 
   const page = parsePage(searchParams.get("page"));
   const pageSize = parsePageSize(searchParams.get("pageSize"));
+  const urlSearch = searchParams.get("search") || "";
+
+  // Local input state — separate from the URL's "search" param.
+  // We type into this freely; it only syncs to the URL after the debounce delay.
+  const [searchInput, setSearchInput] = useState(urlSearch);
 
   const [products, setProducts] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // Pushes new query params to the URL without a full page reload.
-  // Every control (page click, page size change) goes through this
-  // so the URL is always the single source of truth.
+  // Tracks the "latest" request so we can ignore stale/late responses.
+  const requestIdRef = useRef(0);
+
   function updateParams(newParams) {
     const params = new URLSearchParams(searchParams.toString());
     Object.entries(newParams).forEach(([key, value]) => {
-      params.set(key, value);
+      if (value === "" || value === null || value === undefined) {
+        params.delete(key);
+      } else {
+        params.set(key, value);
+      }
     });
     router.push(`/products?${params.toString()}`);
   }
 
+  // DEBOUNCE: wait 500ms after the user stops typing before
+  // pushing the search term into the URL (which triggers the actual API call).
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchInput !== urlSearch) {
+        // Reset to page 1 whenever the search term changes (assignment requirement)
+        updateParams({ search: searchInput, page: 1 });
+      }
+    }, 500);
+
+    return () => clearTimeout(timer); // cancel the pending timer if user keeps typing
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput]);
+
   async function loadProducts() {
     setLoading(true);
     setError("");
+
+    // Issue a new ticket number for this request
+    const currentRequestId = ++requestIdRef.current;
+
     try {
       const skip = (page - 1) * pageSize;
-      const data = await getProducts({ limit: pageSize, skip });
+      const data = urlSearch
+        ? await searchProducts({ query: urlSearch, limit: pageSize, skip })
+        : await getProducts({ limit: pageSize, skip });
 
-      // Guard against ?page=999 pointing past the last real page:
-      // if the API returns zero products for this page but items DO exist,
-      // snap back to the last valid page instead of showing a broken empty page.
+      // RACE CONDITION GUARD:
+      // If a newer request has been fired since this one started,
+      // this response is stale — throw it away instead of updating state.
+      if (currentRequestId !== requestIdRef.current) return;
+
       const lastValidPage = Math.max(1, Math.ceil(data.total / pageSize));
       if (data.products.length === 0 && data.total > 0 && page > lastValidPage) {
         updateParams({ page: lastValidPage });
@@ -68,16 +95,19 @@ export default function ProductsPage() {
       setProducts(data.products);
       setTotal(data.total);
     } catch (err) {
+      if (currentRequestId !== requestIdRef.current) return; // ignore stale errors too
       setError(err.friendlyMessage || "Failed to load products.");
     } finally {
-      setLoading(false);
+      if (currentRequestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
   }
 
   useEffect(() => {
     loadProducts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize]);
+  }, [page, pageSize, urlSearch]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const showingFrom = total === 0 ? 0 : (page - 1) * pageSize + 1;
@@ -89,8 +119,6 @@ export default function ProductsPage() {
   }
 
   function changePageSize(newSize) {
-    // Reset to page 1 whenever page size changes, so we don't
-    // end up on a page number that no longer makes sense.
     updateParams({ pageSize: newSize, page: 1 });
   }
 
@@ -102,6 +130,17 @@ export default function ProductsPage() {
           <LogoutButton />
         </div>
 
+        {/* SEARCH BAR */}
+        <div className="mb-4">
+          <input
+            type="text"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Search products..."
+            className="w-full sm:w-80 border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+
         {loading && (
           <div className="flex justify-center py-16">
             <p className="text-gray-500">Loading products...</p>
@@ -111,10 +150,7 @@ export default function ProductsPage() {
         {!loading && error && (
           <div className="flex flex-col items-center py-16 gap-3">
             <p className="text-red-600">{error}</p>
-            <button
-              onClick={loadProducts}
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-            >
+            <button onClick={loadProducts} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
               Retry
             </button>
           </div>
@@ -174,56 +210,38 @@ export default function ProductsPage() {
               ))}
             </div>
 
-            {/* PAGINATION CONTROLS */}
             <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mt-6">
               <div className="flex items-center gap-3 text-sm text-gray-600">
-                <span>
-                  Showing {showingFrom}–{showingTo} of {total}
-                </span>
+                <span>Showing {showingFrom}–{showingTo} of {total}</span>
                 <select
                   value={pageSize}
                   onChange={(e) => changePageSize(Number(e.target.value))}
                   className="border border-gray-300 rounded px-2 py-1"
                 >
                   {VALID_PAGE_SIZES.map((size) => (
-                    <option key={size} value={size}>
-                      {size} / page
-                    </option>
+                    <option key={size} value={size}>{size} / page</option>
                   ))}
                 </select>
               </div>
 
               <div className="flex items-center gap-1">
-                <button
-                  onClick={() => goToPage(page - 1)}
-                  disabled={page === 1}
-                  className="px-3 py-1 border rounded disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
-                >
+                <button onClick={() => goToPage(page - 1)} disabled={page === 1} className="px-3 py-1 border rounded disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50">
                   Previous
                 </button>
-
                 {Array.from({ length: totalPages }, (_, i) => i + 1)
-                  // Avoid rendering 20 page buttons — only show a small window around the current page
                   .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
                   .map((p, idx, arr) => (
                     <span key={p} className="flex items-center">
                       {idx > 0 && arr[idx - 1] !== p - 1 && <span className="px-1 text-gray-400">…</span>}
                       <button
                         onClick={() => goToPage(p)}
-                        className={`px-3 py-1 border rounded ${
-                          p === page ? "bg-blue-600 text-white border-blue-600" : "hover:bg-gray-50"
-                        }`}
+                        className={`px-3 py-1 border rounded ${p === page ? "bg-blue-600 text-white border-blue-600" : "hover:bg-gray-50"}`}
                       >
                         {p}
                       </button>
                     </span>
                   ))}
-
-                <button
-                  onClick={() => goToPage(page + 1)}
-                  disabled={page === totalPages}
-                  className="px-3 py-1 border rounded disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
-                >
+                <button onClick={() => goToPage(page + 1)} disabled={page === totalPages} className="px-3 py-1 border rounded disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50">
                   Next
                 </button>
               </div>
