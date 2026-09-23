@@ -1,18 +1,38 @@
 import api from "@/lib/axios";
 
-export async function getProducts({ limit = 10, skip = 0 } = {}) {
-  const response = await api.get("/products", {
-    params: { limit, skip },
-  });
+export async function getProducts({ limit = 10, skip = 0, sortBy, order } = {}) {
+  const params = { limit, skip };
+  if (sortBy) {
+    params.sortBy = sortBy;
+    params.order = order || "asc";
+  }
+  const response = await api.get("/products", { params });
   return response.data;
 }
 
-// Separate endpoint DummyJSON provides for search.
-// Kept as its own function so the calling code can decide
-// whether to search or browse normally.
-export async function searchProducts({ query, limit = 10, skip = 0 } = {}) {
-  const response = await api.get("/products/search", {
-    params: { q: query, limit, skip },
-  });
+export async function searchProducts({ query, limit = 10, skip = 0, sortBy, order } = {}) {
+  const params = { q: query, limit, skip };
+  if (sortBy) {
+    params.sortBy = sortBy;
+    params.order = order || "asc";
+  }
+  const response = await api.get("/products/search", { params });
   return response.data;
+}
+
+// Products filtered by category — a completely separate endpoint from search.
+export async function getProductsByCategory({ category, limit = 10, skip = 0, sortBy, order } = {}) {
+  const params = { limit, skip };
+  if (sortBy) {
+    params.sortBy = sortBy;
+    params.order = order || "asc";
+  }
+  const response = await api.get(`/products/category/${category}`, { params });
+  return response.data;
+}
+
+// List of all available categories, for the filter dropdown.
+export async function getCategories() {
+  const response = await api.get("/products/categories");
+  return response.data; // array of { slug, name, url }
 }

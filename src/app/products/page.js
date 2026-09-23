@@ -5,9 +5,23 @@ import { useRouter, useSearchParams } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import LogoutButton from "@/components/LogoutButton";
 import { useAuth } from "@/context/AuthContext";
-import { getProducts, searchProducts } from "@/lib/api/products";
+import {
+  getProducts,
+  searchProducts,
+  getProductsByCategory,
+  getCategories,
+} from "@/lib/api/products";
 
 const VALID_PAGE_SIZES = [10, 20, 50];
+const SORT_OPTIONS = [
+  { value: "", label: "Default" },
+  { value: "title-asc", label: "Title (A–Z)" },
+  { value: "title-desc", label: "Title (Z–A)" },
+  { value: "price-asc", label: "Price (Low–High)" },
+  { value: "price-desc", label: "Price (High–Low)" },
+  { value: "rating-asc", label: "Rating (Low–High)" },
+  { value: "rating-desc", label: "Rating (High–Low)" },
+];
 
 function parsePage(value) {
   const parsed = parseInt(value, 10);
@@ -29,17 +43,17 @@ export default function ProductsPage() {
   const page = parsePage(searchParams.get("page"));
   const pageSize = parsePageSize(searchParams.get("pageSize"));
   const urlSearch = searchParams.get("search") || "";
+  const category = searchParams.get("category") || "";
+  const sortBy = searchParams.get("sortBy") || "";
+  const order = searchParams.get("order") || "asc";
 
-  // Local input state — separate from the URL's "search" param.
-  // We type into this freely; it only syncs to the URL after the debounce delay.
   const [searchInput, setSearchInput] = useState(urlSearch);
-
+  const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // Tracks the "latest" request so we can ignore stale/late responses.
   const requestIdRef = useRef(0);
 
   function updateParams(newParams) {
@@ -54,36 +68,62 @@ export default function ProductsPage() {
     router.push(`/products?${params.toString()}`);
   }
 
-  // DEBOUNCE: wait 500ms after the user stops typing before
-  // pushing the search term into the URL (which triggers the actual API call).
+  // Load categories once, for the filter dropdown
+  useEffect(() => {
+    getCategories()
+      .then((data) => setCategories(data))
+      .catch(() => setCategories([])); // non-critical, fail silently
+  }, []);
+
+  // Debounced search -> URL. Typing a search term also CLEARS any active category
+  // (our Option A decision: search overrides category, since the API can't do both).
   useEffect(() => {
     const timer = setTimeout(() => {
       if (searchInput !== urlSearch) {
-        // Reset to page 1 whenever the search term changes (assignment requirement)
-        updateParams({ search: searchInput, page: 1 });
+        const updates = { search: searchInput, page: 1 };
+        if (searchInput) {
+          updates.category = ""; // clear category the moment a real search term is typed
+        }
+        updateParams(updates);
       }
     }, 500);
-
-    return () => clearTimeout(timer); // cancel the pending timer if user keeps typing
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchInput]);
+
+  function changeCategory(newCategory) {
+    // Selecting a category clears any active search (mirrors the same rule both ways)
+    setSearchInput("");
+    updateParams({ category: newCategory, search: "", page: 1 });
+  }
+
+  function changeSort(value) {
+    if (!value) {
+      updateParams({ sortBy: "", order: "", page: 1 });
+      return;
+    }
+    const [field, dir] = value.split("-");
+    updateParams({ sortBy: field, order: dir, page: 1 });
+  }
 
   async function loadProducts() {
     setLoading(true);
     setError("");
-
-    // Issue a new ticket number for this request
     const currentRequestId = ++requestIdRef.current;
 
     try {
       const skip = (page - 1) * pageSize;
-      const data = urlSearch
-        ? await searchProducts({ query: urlSearch, limit: pageSize, skip })
-        : await getProducts({ limit: pageSize, skip });
+      const sortParams = sortBy ? { sortBy, order } : {};
 
-      // RACE CONDITION GUARD:
-      // If a newer request has been fired since this one started,
-      // this response is stale — throw it away instead of updating state.
+      let data;
+      if (urlSearch) {
+        data = await searchProducts({ query: urlSearch, limit: pageSize, skip, ...sortParams });
+      } else if (category) {
+        data = await getProductsByCategory({ category, limit: pageSize, skip, ...sortParams });
+      } else {
+        data = await getProducts({ limit: pageSize, skip, ...sortParams });
+      }
+
       if (currentRequestId !== requestIdRef.current) return;
 
       const lastValidPage = Math.max(1, Math.ceil(data.total / pageSize));
@@ -95,7 +135,7 @@ export default function ProductsPage() {
       setProducts(data.products);
       setTotal(data.total);
     } catch (err) {
-      if (currentRequestId !== requestIdRef.current) return; // ignore stale errors too
+      if (currentRequestId !== requestIdRef.current) return;
       setError(err.friendlyMessage || "Failed to load products.");
     } finally {
       if (currentRequestId === requestIdRef.current) {
@@ -107,7 +147,7 @@ export default function ProductsPage() {
   useEffect(() => {
     loadProducts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, urlSearch]);
+  }, [page, pageSize, urlSearch, category, sortBy, order]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const showingFrom = total === 0 ? 0 : (page - 1) * pageSize + 1;
@@ -122,6 +162,8 @@ export default function ProductsPage() {
     updateParams({ pageSize: newSize, page: 1 });
   }
 
+  const currentSortValue = sortBy ? `${sortBy}-${order}` : "";
+
   return (
     <ProtectedRoute>
       <div className="p-4 md:p-8">
@@ -130,15 +172,44 @@ export default function ProductsPage() {
           <LogoutButton />
         </div>
 
-        {/* SEARCH BAR */}
-        <div className="mb-4">
+        {/* SEARCH + FILTER + SORT CONTROLS */}
+        <div className="flex flex-col sm:flex-row gap-3 mb-4">
           <input
             type="text"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Search products..."
-            className="w-full sm:w-80 border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full sm:w-64 border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+
+          <select
+            value={category}
+            onChange={(e) => changeCategory(e.target.value)}
+            className="border border-gray-300 rounded px-3 py-2"
+          >
+            <option value="">All categories</option>
+            {categories.map((cat) => {
+              const slug = typeof cat === "string" ? cat : cat.slug;
+              const name = typeof cat === "string" ? cat : cat.name;
+              return (
+                <option key={slug} value={slug}>
+                  {name}
+                </option>
+              );
+            })}
+          </select>
+
+          <select
+            value={currentSortValue}
+            onChange={(e) => changeSort(e.target.value)}
+            className="border border-gray-300 rounded px-3 py-2"
+          >
+            {SORT_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
         </div>
 
         {loading && (
