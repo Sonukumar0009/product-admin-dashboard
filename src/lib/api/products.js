@@ -48,3 +48,7 @@ export async function updateProduct(id, changes) {
   const response = await api.put(`/products/${id}`, changes);
   return response.data;
 }
+export async function deleteProduct(id) {
+  const response = await api.delete(`/products/${id}`);
+  return response.data;
+}

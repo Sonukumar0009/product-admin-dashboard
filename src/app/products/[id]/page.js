@@ -5,7 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import LogoutButton from "@/components/LogoutButton";
 import { getProductById } from "@/lib/api/products";
-
+import { deleteProduct } from "@/lib/api/products";
+import { deleteLocalProduct } from "@/lib/localProductStore";
+import ConfirmDialog from "@/components/ConfirmDialog";
 export default function ProductDetailsPage() {
   const params = useParams();
   const router = useRouter();
@@ -15,6 +17,8 @@ export default function ProductDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [activeImage, setActiveImage] = useState(0);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     async function loadProduct() {
@@ -48,7 +52,22 @@ export default function ProductDetailsPage() {
       </ProtectedRoute>
     );
   }
-
+async function handleDelete() {
+  if (deleting) return;
+  setDeleting(true);
+  try {
+    // Real API call (DELETE /products/:id) — again, DummyJSON fakes success
+    // without actually removing it server-side, so we also mark it deleted locally.
+    await deleteProduct(id);
+    deleteLocalProduct(Number(id) || id);
+    router.push("/products");
+  } catch (err) {
+    setDeleting(false);
+    setShowDeleteConfirm(false);
+    // Could show a toast here; keeping it simple with an alert for now
+    alert(err.friendlyMessage || "Failed to delete product.");
+  }
+}
   if (notFound) {
     return (
       <ProtectedRoute>
@@ -122,12 +141,14 @@ export default function ProductDetailsPage() {
             <p className="text-gray-700 mb-6">{product.description}</p>
 
             <div className="flex gap-3">
-              <button
-                onClick={() => router.push(`/products/${id}/edit`)}
-                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-              >
-                Edit
-              </button>
+           <button onClick={() => router.push(`/products/${id}/edit`)}
+            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+           Edit
+           </button>
+           <button onClick={() => setShowDeleteConfirm(true)}
+            className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">
+             Delete
+           </button>
             </div>
           </div>
         </div>
@@ -150,6 +171,14 @@ export default function ProductDetailsPage() {
           </div>
         )}
       </div>
+      <ConfirmDialog
+  open={showDeleteConfirm}
+  title="Delete product?"
+  message={`Are you sure you want to delete "${product.title}"? This can't be undone.`}
+  onConfirm={handleDelete}
+  onCancel={() => setShowDeleteConfirm(false)}
+  confirming={deleting}
+/>
     </ProtectedRoute>
   );
 }
