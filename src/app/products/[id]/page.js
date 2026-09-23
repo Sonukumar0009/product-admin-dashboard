@@ -6,7 +6,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import LogoutButton from "@/components/LogoutButton";
 import { getProductById } from "@/lib/api/products";
 import { deleteProduct } from "@/lib/api/products";
-import { deleteLocalProduct } from "@/lib/localProductStore";
+import { deleteLocalProduct, getLocalEditsForProduct, isLocallyDeleted } from "@/lib/localProductStore";
 import ConfirmDialog from "@/components/ConfirmDialog";
 export default function ProductDetailsPage() {
   const params = useParams();
@@ -25,14 +25,22 @@ export default function ProductDetailsPage() {
       setLoading(true);
       setNotFound(false);
       try {
-        const data = await getProductById(id);
-        // DummyJSON returns a 200 with an error message body for bad ids,
-        // rather than a real 404 — so we check for that shape explicitly.
-        if (!data || data.message) {
-          setNotFound(true);
-        } else {
-          setProduct(data);
-        }
+        // If this product was deleted locally earlier in the session, treat it
+// as not found — it's "gone" from the user's point of view.
+if (isLocallyDeleted(Number(id)) || isLocallyDeleted(id)) {
+  setNotFound(true);
+  return;
+}
+
+       const data = await getProductById(id);
+       if (!data || data.message) {
+        setNotFound(true);
+       } else {
+  // Merge any local edits on top of the real API data, so the details
+  // page reflects the latest change made in this session.
+        const localEdits = getLocalEditsForProduct(Number(id)) || getLocalEditsForProduct(id);
+        setProduct(localEdits ? { ...data, ...localEdits } : data);
+         }
       } catch (err) {
         // A genuine HTTP error (network issue, real 404, etc.)
         setNotFound(true);

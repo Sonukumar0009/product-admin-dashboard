@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import LogoutButton from "@/components/LogoutButton";
 import { useAuth } from "@/context/AuthContext";
+import { applyOverrides, getLocalAddedProducts } from "@/lib/localProductStore";
 import {
   getProducts,
   searchProducts,
@@ -131,8 +132,22 @@ export default function ProductsPage() {
         return;
       }
 
-      setProducts(data.products);
-      setTotal(data.total);
+   // Apply local edits/deletes on top of whatever the API returned.
+  let finalProducts = applyOverrides(data.products);
+  let finalTotal = data.total;
+
+// Only show locally-added products on an unfiltered, sorted-default,
+// first page view — that's the one place "new" items make sense to prepend,
+// since a fake local product can't really be sorted/filtered by the real API.
+  const isDefaultView = !urlSearch && !category && !sortBy && page === 1;
+  if (isDefaultView) {
+   const added = getLocalAddedProducts();
+  finalProducts = [...added, ...finalProducts].slice(0, pageSize);
+  finalTotal = data.total + added.length;
+  }
+
+setProducts(finalProducts);
+setTotal(finalTotal);
     } catch (err) {
       if (currentRequestId !== requestIdRef.current) return;
       setError(err.friendlyMessage || "Failed to load products.");
