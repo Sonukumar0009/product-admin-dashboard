@@ -44,3 +44,7 @@ export async function addProduct(product) {
   const response = await api.post("/products/add", product);
   return response.data;
 }
+export async function updateProduct(id, changes) {
+  const response = await api.put(`/products/${id}`, changes);
+  return response.data;
+}
