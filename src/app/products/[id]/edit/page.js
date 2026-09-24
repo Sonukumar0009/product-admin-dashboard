@@ -5,7 +5,13 @@ import { useParams, useRouter } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import LogoutButton from "@/components/LogoutButton";
 import { getProductById, updateProduct } from "@/lib/api/products";
-import { editLocalProduct, getLocalEditsForProduct } from "@/lib/localProductStore";
+import Loader from "@/components/Loader";
+import {
+  editLocalProduct,
+  getLocalEditsForProduct,
+  getLocalAddedProductById,
+  updateLocalAddedProduct,
+} from "@/lib/localProductStore";
 
 function validate(form) {
   const errors = {};
@@ -32,33 +38,45 @@ export default function EditProductPage() {
 
   useEffect(() => {
     async function loadProduct() {
-      setLoading(true);
-      try {
-        const data = await getProductById(id);
-        if (!data || data.message) {
-          setNotFound(true);
-          return;
-        }
-
-        // Apply any local edits made previously in this session on top of
-        // the fresh API data, so re-opening Edit shows your latest changes.
-        const localEdits = getLocalEditsForProduct(Number(id)) || getLocalEditsForProduct(id);
-        const merged = { ...data, ...localEdits };
-
-        setForm({
-          title: merged.title || "",
-          category: merged.category || "",
-          price: merged.price ?? "",
-          stock: merged.stock ?? "",
-          description: merged.description || "",
-          thumbnail: merged.thumbnail || "",
-        });
-      } catch (err) {
-        setNotFound(true);
-      } finally {
-        setLoading(false);
-      }
+  setLoading(true);
+  try {
+    // Locally-added products only exist in localStorage — check there first.
+    const localAdded = getLocalAddedProductById(id);
+    if (localAdded) {
+      setForm({
+        title: localAdded.title || "",
+        category: localAdded.category || "",
+        price: localAdded.price ?? "",
+        stock: localAdded.stock ?? "",
+        description: localAdded.description || "",
+        thumbnail: localAdded.thumbnail || "",
+      });
+      return;
     }
+
+    const data = await getProductById(id);
+    if (!data || data.message) {
+      setNotFound(true);
+      return;
+    }
+
+    const localEdits = getLocalEditsForProduct(Number(id)) || getLocalEditsForProduct(id);
+    const merged = { ...data, ...localEdits };
+
+    setForm({
+      title: merged.title || "",
+      category: merged.category || "",
+      price: merged.price ?? "",
+      stock: merged.stock ?? "",
+      description: merged.description || "",
+      thumbnail: merged.thumbnail || "",
+    });
+  } catch (err) {
+    setNotFound(true);
+  } finally {
+    setLoading(false);
+  }
+}
     loadProduct();
   }, [id]);
 
@@ -95,8 +113,15 @@ export default function EditProductPage() {
       // Real API call (PUT /products/:id) — DummyJSON responds with a fake
       // "updated" object but doesn't persist it, so we also save the change
       // locally to make it stick in our own app.
-      await updateProduct(id, changes);
-      editLocalProduct(Number(id) || id, changes);
+    const localAdded = getLocalAddedProductById(id);
+if (localAdded) {
+  // This product only exists locally — update it directly, no real API call needed.
+  updateLocalAddedProduct(id, changes);
+} else {
+  // Real DummyJSON product — call the real API, then save the change locally too.
+  await updateProduct(id, changes);
+  editLocalProduct(Number(id) || id, changes);
+}
 
       router.push(`/products/${id}`);
     } catch (err) {
@@ -111,7 +136,7 @@ export default function EditProductPage() {
     return (
       <ProtectedRoute>
         <div className="flex justify-center items-center min-h-[60vh]">
-          <p className="text-gray-500">Loading product...</p>
+          <Loader label="Loading product..." />
         </div>
       </ProtectedRoute>
     );

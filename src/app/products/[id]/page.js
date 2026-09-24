@@ -6,7 +6,14 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import LogoutButton from "@/components/LogoutButton";
 import { getProductById } from "@/lib/api/products";
 import { deleteProduct } from "@/lib/api/products";
-import { deleteLocalProduct, getLocalEditsForProduct, isLocallyDeleted } from "@/lib/localProductStore";
+import Loader from "@/components/Loader";
+import {
+  deleteLocalProduct,
+  getLocalEditsForProduct,
+  isLocallyDeleted,
+  getLocalAddedProductById,
+  removeLocalAddedProduct,
+} from "@/lib/localProductStore";
 import ConfirmDialog from "@/components/ConfirmDialog";
 export default function ProductDetailsPage() {
   const params = useParams();
@@ -22,57 +29,67 @@ export default function ProductDetailsPage() {
 
   useEffect(() => {
     async function loadProduct() {
-      setLoading(true);
-      setNotFound(false);
-      try {
-        // If this product was deleted locally earlier in the session, treat it
-// as not found — it's "gone" from the user's point of view.
-if (isLocallyDeleted(Number(id)) || isLocallyDeleted(id)) {
-  setNotFound(true);
-  return;
-}
-
-       const data = await getProductById(id);
-       if (!data || data.message) {
-        setNotFound(true);
-       } else {
-  // Merge any local edits on top of the real API data, so the details
-  // page reflects the latest change made in this session.
-        const localEdits = getLocalEditsForProduct(Number(id)) || getLocalEditsForProduct(id);
-        setProduct(localEdits ? { ...data, ...localEdits } : data);
-         }
-      } catch (err) {
-        // A genuine HTTP error (network issue, real 404, etc.)
-        setNotFound(true);
-      } finally {
-        setLoading(false);
+     setLoading(true);
+     setNotFound(false);
+     try {
+    // Check if this is a locally-added product first — these have fake
+    // ids that only exist in localStorage, never on the real API.
+       const localAdded = getLocalAddedProductById(id);
+      if (localAdded) {
+      setProduct(localAdded);
+      return;
       }
+
+    // If this product was deleted locally earlier in the session, treat it
+    // as not found — it's "gone" from the user's point of view.
+      if (isLocallyDeleted(Number(id)) || isLocallyDeleted(id)) {
+      setNotFound(true);
+      return;
+      }
+
+     const data = await getProductById(id);
+    if (!data || data.message) {
+      setNotFound(true);
+    } else {
+      const localEdits = getLocalEditsForProduct(Number(id)) || getLocalEditsForProduct(id);
+      setProduct(localEdits ? { ...data, ...localEdits } : data);
+    }
+    } catch (err) {
+    setNotFound(true);
+    } finally {
+    setLoading(false);
+     }
     }
     loadProduct();
-  }, [id]);
+      }, [id]);
 
-  if (loading) {
-    return (
-      <ProtectedRoute>
-        <div className="flex justify-center items-center min-h-[60vh]">
-          <p className="text-gray-500">Loading product...</p>
-        </div>
-      </ProtectedRoute>
-    );
-  }
+if (loading) {
+  return (
+    <ProtectedRoute>
+      <div className="flex justify-center items-center min-h-[60vh]">
+        <Loader label="Loading product..." />
+      </div>
+    </ProtectedRoute>
+  );
+}
 async function handleDelete() {
   if (deleting) return;
   setDeleting(true);
   try {
-    // Real API call (DELETE /products/:id) — again, DummyJSON fakes success
-    // without actually removing it server-side, so we also mark it deleted locally.
-    await deleteProduct(id);
-    deleteLocalProduct(Number(id) || id);
+    const localAdded = getLocalAddedProductById(id);
+    if (localAdded) {
+      // This product only exists locally — no real API call needed,
+      // just remove it from the local "added" list directly.
+      removeLocalAddedProduct(id);
+    } else {
+      // Real DummyJSON product — call the real API, then mark it deleted locally too.
+      await deleteProduct(id);
+      deleteLocalProduct(Number(id) || id);
+    }
     router.push("/products");
   } catch (err) {
     setDeleting(false);
     setShowDeleteConfirm(false);
-    // Could show a toast here; keeping it simple with an alert for now
     alert(err.friendlyMessage || "Failed to delete product.");
   }
 }

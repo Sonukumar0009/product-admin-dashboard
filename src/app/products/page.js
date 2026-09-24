@@ -1,11 +1,12 @@
 "use client";
-
-import { useEffect, useState, useRef } from "react";
+import { Suspense, useEffect, useState, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import LogoutButton from "@/components/LogoutButton";
 import { useAuth } from "@/context/AuthContext";
 import { applyOverrides, getLocalAddedProducts } from "@/lib/localProductStore";
+import Navbar from "@/components/Navbar";
+import Loader from "@/components/Loader";
 import {
   getProducts,
   searchProducts,
@@ -35,7 +36,7 @@ function parsePageSize(value) {
   return 10;
 }
 
-export default function ProductsPage() {
+function ProductsPageContent() {
   const { user } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -180,19 +181,9 @@ setTotal(finalTotal);
 
   return (
     <ProtectedRoute>
-      <div className="p-4 md:p-8">
-        <div className="flex justify-between items-center mb-6">
-  <h1 className="text-xl font-semibold">Welcome, {user?.firstName}</h1>
-  <div className="flex items-center gap-4">
-    <button
-      onClick={() => router.push("/products/new")}
-      className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm"
-    >
-      + Add Product
-    </button>
-    <LogoutButton />
-  </div>
-      </div>
+      <div className="min-h-screen bg-gray-50">
+        <Navbar showAddButton />
+        <div className="p-4 md:p-8">
 
         {/* SEARCH + FILTER + SORT CONTROLS */}
         <div className="flex flex-col sm:flex-row gap-3 mb-4">
@@ -234,11 +225,7 @@ setTotal(finalTotal);
           </select>
         </div>
 
-        {loading && (
-          <div className="flex justify-center py-16">
-            <p className="text-gray-500">Loading products...</p>
-          </div>
-        )}
+       {loading && <Loader label="Loading products..." />}
 
         {!loading && error && (
           <div className="flex flex-col items-center py-16 gap-3">
@@ -257,53 +244,73 @@ setTotal(finalTotal);
 
         {!loading && !error && products.length > 0 && (
           <>
-            <div className="hidden md:block overflow-x-auto">
-              <table className="min-w-full bg-white border border-gray-200 rounded-lg overflow-hidden">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Image</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Title</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Category</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Price</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Rating</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Stock</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {products.map((product) => (
-                   <tr key={product.id} onClick={() => router.push(`/products/${product.id}`)}
-                      className="border-t border-gray-100 hover:bg-gray-50 cursor-pointer">
-                      <td className="px-4 py-3">
-                        <img src={product.thumbnail} alt={product.title} className="w-12 h-12 object-cover rounded" />
-                      </td>
-                      <td className="px-4 py-3 font-medium">{product.title}</td>
-                      <td className="px-4 py-3 text-gray-600 capitalize">{product.category}</td>
-                      <td className="px-4 py-3">${product.price}</td>
-                      <td className="px-4 py-3">⭐ {product.rating}</td>
-                      <td className="px-4 py-3">{product.stock}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+           <div className="hidden md:block overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+  <table className="min-w-full bg-white">
+    <thead className="bg-gray-100 border-b border-gray-200">
+      <tr>
+        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide">Image</th>
+        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide">Title</th>
+        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide">Category</th>
+        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide">Price</th>
+        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide">Rating</th>
+        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide">Stock</th>
+      </tr>
+    </thead>
+    <tbody className="divide-y divide-gray-100">
+      {products.map((product) => (
+        <tr
+          key={product.id}
+          onClick={() => router.push(`/products/${product.id}`)}
+          className="hover:bg-blue-50 cursor-pointer transition-colors"
+        >
+          <td className="px-4 py-3">
+            <img
+              src={product.thumbnail}
+              alt={product.title}
+              className="w-12 h-12 object-cover rounded border border-gray-200"
+            />
+            </td>
+             <td className="px-4 py-3 font-semibold text-gray-900">{product.title}</td>
+             <td className="px-4 py-3 text-gray-600 capitalize">{product.category}</td>
+             <td className="px-4 py-3 font-medium text-gray-900">${product.price}</td>
+             <td className="px-4 py-3 text-gray-700">⭐ {product.rating}</td>
+             <td className="px-4 py-3">
+            <span
+              className={`text-xs font-medium px-2 py-1 rounded ${
+                product.stock > 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+              }`}
+            >
+              {product.stock > 0 ? product.stock : "Out of stock"}
+                </span>
+               </td>
+             </tr>
+          ))}
+         </tbody>
+           </table>
+         </div>
 
-            <div className="md:hidden space-y-3">
-              {products.map((product) => (
-                <div key={product.id} onClick={() => router.push(`/products/${product.id}`)}
-                       className="bg-white border border-gray-200 rounded-lg p-4 flex gap-3 cursor-pointer hover:bg-gray-50">
-                  <img src={product.thumbnail} alt={product.title} className="w-16 h-16 object-cover rounded flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{product.title}</p>
-                    <p className="text-sm text-gray-500 capitalize">{product.category}</p>
-                    <div className="flex justify-between mt-1 text-sm">
-                      <span className="font-medium">${product.price}</span>
-                      <span>⭐ {product.rating}</span>
-                      <span className="text-gray-500">Stock: {product.stock}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <div className="md:hidden space-y-3"> {products.map((product) => (
+           <div key={product.id} onClick={() => router.push(`/products/${product.id}`)}
+               className="bg-white border border-gray-200 rounded-lg p-4 flex gap-3 cursor-pointer hover:border-blue-300 hover:shadow-sm transition-all">
+          <img src={product.thumbnail}  alt={product.title}
+            className="w-16 h-16 object-cover rounded flex-shrink-0 border border-gray-200"/>
+            <div className="flex-1 min-w-0">
+           <p className="font-semibold text-gray-900 truncate">{product.title}</p>
+           <p className="text-sm text-gray-500 capitalize">{product.category}</p>
+           <div className="flex justify-between items-center mt-2 text-sm">
+           <span className="font-semibold text-gray-900">${product.price}</span>
+           <span className="text-gray-700">⭐ {product.rating}</span>
+           <span
+            className={`text-xs font-medium px-2 py-0.5 rounded ${
+              product.stock > 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+            }`} >
+            {product.stock > 0 ? `${product.stock} left` : "Out of stock"}
+            </span>
+        </div>
+      </div>
+    </div>
+  ))}
+</div>
 
             <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mt-6">
               <div className="flex items-center gap-3 text-sm text-gray-600">
@@ -343,7 +350,18 @@ setTotal(finalTotal);
             </div>
           </>
         )}
+        </div>
       </div>
     </ProtectedRoute>
+  );
+
+}
+ 
+
+export default function ProductsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-gray-500">Loading...</div>}>
+      <ProductsPageContent />
+    </Suspense>
   );
 }

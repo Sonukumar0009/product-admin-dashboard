@@ -65,11 +65,32 @@ export function applyOverrides(products) {
 export function getLocalAddedProducts() {
   return readStore().added;
 }
-
+// Finds one locally-added product by its (fake) id — used by the details
+// page, since these products don't exist on the real API at all.
+export function getLocalAddedProductById(id) {
+  const added = getLocalAddedProducts();
+  return added.find((p) => String(p.id) === String(id)) || null;
+}
 export function getLocalEditsForProduct(id) {
   return readStore().edited[id] || null;
 }
 
 export function isLocallyDeleted(id) {
   return readStore().deleted.includes(id);
+}
+// Updates a locally-added product in place (used when editing something
+// that was itself created locally, e.g. via the Add Product form).
+export function updateLocalAddedProduct(id, changes) {
+  const store = readStore();
+  store.added = store.added.map((p) =>
+    String(p.id) === String(id) ? { ...p, ...changes } : p
+  );
+  writeStore(store);
+}
+// Removes a locally-added product entirely — used when deleting something
+// that was itself only ever a local addition (never a real API product).
+export function removeLocalAddedProduct(id) {
+  const store = readStore();
+  store.added = store.added.filter((p) => String(p.id) !== String(id));
+  writeStore(store);
 }
