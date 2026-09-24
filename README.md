@@ -3,7 +3,7 @@
 A small admin panel to log in and manage products. Built with Next.js, React, Tailwind CSS, and Axios. Data comes from the free [DummyJSON](https://dummyjson.com) API.
 
 ## Live Demo
-[Add your Vercel link here]
+https://product-admin-dashboard-two-theta.vercel.app/login
 
 ## How to Run This Project
 
